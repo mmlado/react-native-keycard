@@ -151,23 +151,43 @@ import os.log
       }
   }
 
-  public func stopNFC(_ err: String = "") -> NSNumber {
-    if #available(iOS 13.0, *) {
-        let controller: KeycardController? = withStateLock {
-          let current = self.keycardController
-          self.cardChannel = nil
-          self.keycardController = nil
-          return current
-        }
-        if (err.isEmpty) {
-          controller?.stop(alertMessage: "Success")
-        } else {
-          controller?.stop(errorMessage: err)
-        }
-        return NSNumber(true)
-      } else {
-        return NSNumber(false)
-      }
+  /// Ends the session with the success checkmark, showing `successMessage` on
+  /// Apple's sheet, or "Success" when it is empty.
+  public func stopNFC(successMessage: String) -> NSNumber {
+    guard #available(iOS 13.0, *) else {
+      return NSNumber(false)
+    }
+
+    tearDownSession()?.stop(
+      alertMessage: successMessage.isEmpty ? "Success" : successMessage)
+    return NSNumber(true)
+  }
+
+  /// Ends the session with the error icon, showing `errorMessage` on Apple's
+  /// sheet.
+  public func stopNFC(errorMessage: String) -> NSNumber {
+    guard #available(iOS 13.0, *) else {
+      return NSNumber(false)
+    }
+
+    tearDownSession()?.stop(errorMessage: errorMessage)
+    return NSNumber(true)
+  }
+
+  /// Detaches the controller and channel under the state lock and hands the
+  /// controller back for the caller to stop.
+  ///
+  /// Returns rather than stopping because the lock must never be held across a
+  /// CoreNFC call, and the state must be cleared before the call so a
+  /// concurrent send() cannot pick up a controller that is being torn down.
+  @available(iOS 13.0, *)
+  private func tearDownSession() -> KeycardController? {
+    return withStateLock {
+      let current = self.keycardController
+      self.cardChannel = nil
+      self.keycardController = nil
+      return current
+    }
   }
 
   public func setNFCMessage(_ message: String) -> NSNumber {
