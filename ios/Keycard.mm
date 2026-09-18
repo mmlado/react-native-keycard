@@ -39,23 +39,13 @@
       reject(@"E_KEYCARD", @"unavailable", nil);
     }
 };
-- (void)resolveStopResult:(NSNumber *)result resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject {
+- (void)stopNFC:(NSString *)message isError:(NSNumber *)isError resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject {
+    NSNumber * result = [keycard stopNFC:(message ?: @"") isError:[isError boolValue]];
     if([result isEqual: @true]) {
         resolve(result);
     } else {
         reject(@"E_KEYCARD", @"unavailable", nil);
     }
-}
-- (void)stopNFCWithError:(NSString *)err resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject {
-    [self resolveStopResult:[keycard stopNFCWithErrorMessage:err] resolve:resolve reject:reject];
-};
-- (void)stopNFC:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject {
-    [self resolveStopResult:[keycard stopNFCWithSuccessMessage:@""] resolve:resolve reject:reject];
-};
-// Success path carrying the caller's own wording onto Apple's sheet. Kept
-// separate from stopNFC so existing callers keep the generic "Success".
-- (void)stopNFCWithMessage:(NSString *)message resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject {
-    [self resolveStopResult:[keycard stopNFCWithSuccessMessage:message] resolve:resolve reject:reject];
 };
 - (void)setNFCMessage:(NSString *)message resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject {
     NSNumber * result = [keycard setNFCMessage:message];

@@ -54,20 +54,8 @@ class KeycardModule(reactContext: ReactApplicationContext) : NativeKeycardSpec(r
     promise.resolve(true);
   }
 
-  override fun stopNFC(promise: Promise) {
-    cardChannel?.stopNFC();
-    promise.resolve(true);
-  }
-
-  // `err` is ignored: Android has no system NFC modal to surface it in (iOS-only concern).
-  override fun stopNFCWithError(err: String, promise: Promise) {
-    cardChannel?.stopNFC();
-    promise.resolve(true);
-  }
-
-  // `message` is ignored for the same reason as `err` above: it exists to word
-  // Apple's system sheet, which Android does not have.
-  override fun stopNFCWithMessage(message: String, promise: Promise) {
+  // `message` and `isError` are ignored: Android has no system NFC modal to surface them in (iOS-only concern).
+  override fun stopNFC(message: String?, isError: Boolean?, promise: Promise) {
     cardChannel?.stopNFC();
     promise.resolve(true);
   }

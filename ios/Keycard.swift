@@ -124,43 +124,23 @@ import os.log
       }
   }
 
-  /// Ends the session with the success checkmark, showing `successMessage` on
-  /// Apple's sheet, or "Success" when it is empty.
-  public func stopNFC(successMessage: String) -> NSNumber {
-    guard #available(iOS 13.0, *) else {
-      return NSNumber(false)
-    }
-
-    tearDownSession()?.stop(
-      alertMessage: successMessage.isEmpty ? "Success" : successMessage)
-    return NSNumber(true)
-  }
-
-  /// Ends the session with the error icon, showing `errorMessage` on Apple's
-  /// sheet.
-  public func stopNFC(errorMessage: String) -> NSNumber {
-    guard #available(iOS 13.0, *) else {
-      return NSNumber(false)
-    }
-
-    tearDownSession()?.stop(errorMessage: errorMessage)
-    return NSNumber(true)
-  }
-
-  /// Detaches the controller and channel under the state lock and hands the
-  /// controller back for the caller to stop.
-  ///
-  /// Returns rather than stopping because the lock must never be held across a
-  /// CoreNFC call, and the state must be cleared before the call so a
-  /// concurrent send() cannot pick up a controller that is being torn down.
-  @available(iOS 13.0, *)
-  private func tearDownSession() -> KeycardController? {
-    return withStateLock {
-      let current = self.keycardController
-      self.cardChannel = nil
-      self.keycardController = nil
-      return current
-    }
+  public func stopNFC(_ message: String = "", isError: Bool = false) -> NSNumber {
+    if #available(iOS 13.0, *) {
+        let controller: KeycardController? = withStateLock {
+          let current = self.keycardController
+          self.cardChannel = nil
+          self.keycardController = nil
+          return current
+        }
+        if (isError) {
+          controller?.stop(errorMessage: message)
+        } else {
+          controller?.stop(alertMessage: message.isEmpty ? "Success" : message)
+        }
+        return NSNumber(true)
+      } else {
+        return NSNumber(false)
+      }
   }
 
   public func setNFCMessage(_ message: String) -> NSNumber {
