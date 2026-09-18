@@ -9,8 +9,6 @@ jest.mock('../NativeKeycard', () => ({
   },
 }));
 
-// Minimal APDU command: a bare SELECT-shaped payload is enough — the channel
-// only serializes it to hex.
 const cmd = {
   serialize: () => new Uint8Array([0x00, 0xa4, 0x04, 0x00]),
 } as any;
@@ -27,7 +25,6 @@ describe('NFCCardChannel.send', () => {
   });
 
   it('wraps a native tag-loss rejection as CardIOError carrying the message', async () => {
-    // What Android rejects with after a mid-APDU tag removal.
     mockSend.mockRejectedValue(new Error('Tag was lost.'));
     await expect(new NFCCardChannel().send(cmd)).rejects.toThrow(
       /CardIO Error: .*Tag was lost\./
@@ -49,8 +46,6 @@ describe('NFCCardChannel.send', () => {
   });
 
   it('wraps a truncated success payload instead of letting it escape bare', async () => {
-    // Previously APDUResponse was constructed outside the try, so its own
-    // "must be at least 2 bytes" throw reached callers unwrapped.
     mockSend.mockResolvedValue({ state: 'success', data: '90' });
     await expect(new NFCCardChannel().send(cmd)).rejects.toThrow(
       /CardIO Error: .*at least 2 bytes/
