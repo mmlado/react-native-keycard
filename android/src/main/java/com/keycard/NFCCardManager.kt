@@ -39,41 +39,20 @@ public class NFCCardManager(loopSleepMS: Long?): Thread(), NfcAdapter.ReaderCall
     }
   }
 
-  /**
-   * Drops the current tag after a transceive-level loss.
-   *
-   * IsoDep.isConnected() reports a LOCAL flag, not the RF link: it keeps
-   * returning true for a tag that has physically left the field, until the tag
-   * is closed. Without this the runloop never sees a connected -> disconnected
-   * transition, so no disconnect event is emitted AND a re-tap produces no
-   * connect event either (the state never left "connected"), leaving the
-   * reader deaf until the session is torn down.
-   */
+  // isConnected() stays true for a lost tag until it is closed
   public fun invalidateTag() {
-    val dep: IsoDep? = this.isoDep;
-    this.isoDep = null;
-
     try {
-      dep?.close();
-    } catch (e: IOException) {
-      // Already gone — nothing to release.
-    } catch (e: SecurityException) {
-      // Tag owned by another activity — nothing to release.
+      this.isoDep?.close();
+    } catch (e: Exception) {
     }
   }
 
   override fun onTagDiscovered(tag: Tag) {
-    // Release any previous tag before adopting the new one, so a stale
-    // reference can never keep the runloop's presence state stuck.
     this.invalidateTag();
     try {
       this.isoDep = IsoDep.get(tag);
       this.isoDep?.connect();
-      // 10 s, not 120 s: a transceive against a half-coupled tag (lifted just
-      // as it connected) blocks the full timeout with no TagLostException and
-      // no disconnect transition — observed on-device as a 121 s freeze on
-      // SELECT. No legitimate Keycard APDU takes anywhere near 10 s; on
-      // timeout the transceive throws and the failure surfaces immediately.
+      // a half-coupled tag blocks transceive for the whole timeout
       this.isoDep?.setTimeout(10000);
     } catch (e: IOException) {
       Log.e(TAG, "Error connecting to tag");

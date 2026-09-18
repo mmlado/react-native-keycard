@@ -78,15 +78,10 @@ class KeycardModule(reactContext: ReactApplicationContext) : NativeKeycardSpec(r
       response.putString("state", state);
       promise.resolve(response);
     } catch(e: TagLostException) {
-      // Reject rather than resolve {state:"error"}: the exception message
-      // ("Tag was lost.") IS the signal that lets JS tell "card left the
-      // field" from "card said no", and iOS already rejects on any
-      // non-success. Must be caught before IOException (it is a subclass).
       promise.reject(e);
     } catch(e: IOException) {
       promise.resolve(response);
     } catch(e: Throwable) {
-      // Nothing may escape a promise-returning TurboModule method.
       promise.resolve(response);
     }
   }

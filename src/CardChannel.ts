@@ -15,9 +15,6 @@ export class NFCCardChannel implements CardChannel {
         throw new Error('Error sending command');
       }
 
-      // Constructed inside the try: APDUResponse's own "must be at least 2
-      // bytes" throw previously escaped un-wrapped, so callers saw it bare
-      // instead of as a CardIOError like every other channel failure.
       return new APDUResponse(
         new Uint8Array(Buffer.from(apduResp.data, 'hex'))
       );

@@ -23,7 +23,6 @@ import com.keycard.NFCCardManager
 
 class NFCCardChannel(keycardEvents: Map<String, KFunction0<Unit>>): BroadcastReceiver() {
     private var nfcAdapter: NfcAdapter? = null
-    /** Kept so polling can be restarted after a tag loss; see restartPolling(). */
     private var activity: Activity? = null
     private var isoDep: IsoDep? = null;
     val TAG: String = "SmartCard";
@@ -88,16 +87,7 @@ class NFCCardChannel(keycardEvents: Map<String, KFunction0<Unit>>): BroadcastRec
       }
     }
 
-    /**
-     * Restarts RF polling so a card that never left the field is discovered
-     * again — the Android counterpart of CoreNFC's restartPolling().
-     *
-     * After a tag is closed (see NFCCardManager.invalidateTag) the reader is
-     * armed but blind to that card: onTagDiscovered only fires when a tag
-     * ENTERS the field, so a card the user simply repositioned is never
-     * re-delivered and the session waits forever. Cycling reader mode forces
-     * a fresh polling round that picks up whatever is currently present.
-     */
+    // onTagDiscovered fires only on field entry, so a card that stayed in the field needs a new polling round
     public fun restartPolling(): Unit {
       val act: Activity = this.activity ?: return;
       val adapter: NfcAdapter = this.nfcAdapter ?: return;
@@ -108,8 +98,6 @@ class NFCCardChannel(keycardEvents: Map<String, KFunction0<Unit>>): BroadcastRec
           adapter.enableReaderMode(act, this.cardManager, READER_FLAGS, null);
           log("reader mode restarted");
         } catch (e: IllegalStateException) {
-          // Activity is gone (backgrounded or destroyed); the next start()
-          // re-arms the reader anyway.
           log("could not restart reader mode: " + e.message);
         }
       }
@@ -127,10 +115,6 @@ class NFCCardChannel(keycardEvents: Map<String, KFunction0<Unit>>): BroadcastRec
         }
       }
 
-      // No live tag: the card may still be sitting on the antenna from a
-      // previous, lost session — it will never be re-delivered on its own
-      // because onTagDiscovered fires only on field entry. Re-poll so a
-      // resumed session finds it without the user lifting the card.
       if (!haveTag) {
         this.restartPolling();
       }
@@ -174,63 +158,27 @@ class NFCCardChannel(keycardEvents: Map<String, KFunction0<Unit>>): BroadcastRec
         }
     }
 
-    /**
-     * Releases the lost tag and re-arms discovery.
-     *
-     * Both halves are required: without invalidateTag() the runloop never sees
-     * the loss (IsoDep.isConnected() lies about a dead tag), and without
-     * restartPolling() a card the user merely repositioned is never
-     * re-discovered, because onTagDiscovered only fires on field entry.
-     */
-    private fun dropTag(): Unit {
-      this.cardManager.invalidateTag();
-      this.restartPolling();
-    }
-
     public fun send(cmd: String): ByteArray {
       val apdu: ByteArray = @OptIn(kotlin.ExperimentalStdlibApi::class) cmd.hexToByteArray();
+      val dep: IsoDep? = synchronized(this.lock) { this.isoDep };
 
-      // Was `isoDep!!` — onDisconnected() nulls this field, so a send racing a
-      // card removal threw an uncaught KotlinNullPointerException. Restores the
-      // guard status-keycard's SmartCard.commandSet() has had since 5b456ea;
-      // TAG_LOST is the constant this file already declares for exactly this
-      // purpose. TagLostException is what transceive() itself throws when the
-      // tag leaves the field, so the guard path and the framework path are
-      // indistinguishable to the JS side. Never hold the lock across transceive.
-      val dep = synchronized(this.lock) { this.isoDep } ?: run {
-        this.dropTag();
-        throw TagLostException(TAG_LOST);
+      try {
+        if (dep == null) {
+          throw TagLostException(TAG_LOST);
+        }
+        return dep.transceive(apdu);
+      } catch(e: Exception) {
+        when (e) {
+          is TagLostException, is SecurityException, is IllegalStateException -> {
+            // isConnected() stays true for a lost tag until it is closed
+            this.cardManager.invalidateTag();
+            this.restartPolling();
+            throw if (e is TagLostException) e else IOException("Tag disconnected", e);
+          }
+          is IllegalArgumentException -> throw IOException("Malformed card response", e);
+          else -> throw e;
+        }
       }
-
-      val resp = try {
-        dep.transceive(apdu);
-      } catch(e: TagLostException) {
-        // The tag is gone, but IsoDep.isConnected() keeps reporting true until
-        // the tag is closed, so the runloop would see no transition: no
-        // disconnect event now, and no connect event on the next tap either.
-        this.dropTag();
-        throw e;
-      } catch(e: SecurityException) {
-        this.dropTag();
-        throw IOException("Tag disconnected", e);
-      } catch(e: IllegalStateException) {
-        this.dropTag();
-        throw IOException("Tag disconnected", e);
-      } catch(e: IllegalArgumentException) {
-        // A malformed OUTBOUND apdu is a programmer error, not a tag loss:
-        // the tag stays valid, so it is not invalidated here.
-        throw IOException("Malformed card response", e);
-      }
-
-      // A reply shorter than 2 bytes cannot be a valid APDU response (SW1+SW2);
-      // it means the exchange was cut short. The Java bridge raised this inside
-      // send() via APDUResponse's constructor; classify it here, at the only
-      // layer that knows why.
-      if (resp.size < 2) {
-        this.dropTag();
-        throw TagLostException(TAG_LOST);
-      }
-      return resp;
     }
 
     public fun isConnected(): Boolean {
