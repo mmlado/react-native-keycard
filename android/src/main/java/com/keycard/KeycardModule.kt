@@ -7,6 +7,7 @@ import com.facebook.react.bridge.Arguments
 import kotlin.reflect.KFunction0
 import android.app.Activity
 import android.content.Intent
+import android.nfc.TagLostException
 import android.provider.Settings
 import android.util.Log
 import java.io.IOException
@@ -76,7 +77,11 @@ class KeycardModule(reactContext: ReactApplicationContext) : NativeKeycardSpec(r
       response.putString("data", @OptIn(kotlin.ExperimentalStdlibApi::class) if(resp != null) resp.toHexString() else "");
       response.putString("state", state);
       promise.resolve(response);
+    } catch(e: TagLostException) {
+      promise.reject(e);
     } catch(e: IOException) {
+      promise.resolve(response);
+    } catch(e: Throwable) {
       promise.resolve(response);
     }
   }

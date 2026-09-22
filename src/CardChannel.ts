@@ -8,7 +8,6 @@ import { Buffer } from 'buffer';
 export class NFCCardChannel implements CardChannel {
   async send(cmd: APDUCommand): Promise<APDUResponse> {
     let apduCmd = Buffer.from(cmd.serialize()).toString('hex');
-    let respData: Buffer;
 
     try {
       const apduResp = await Keycard.send(apduCmd);
@@ -16,12 +15,12 @@ export class NFCCardChannel implements CardChannel {
         throw new Error('Error sending command');
       }
 
-      respData = Buffer.from(apduResp.data, 'hex');
+      return new APDUResponse(
+        new Uint8Array(Buffer.from(apduResp.data, 'hex'))
+      );
     } catch (err: any) {
       throw new CardIOError(err);
     }
-
-    return new APDUResponse(new Uint8Array(respData));
   }
 
   isConnected(): boolean {

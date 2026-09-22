@@ -39,12 +39,21 @@ public class NFCCardManager(loopSleepMS: Long?): Thread(), NfcAdapter.ReaderCall
     }
   }
 
+  // isConnected() stays true for a lost tag until it is closed
+  public fun invalidateTag() {
+    try {
+      this.isoDep?.close();
+    } catch (e: Exception) {
+    }
+  }
+
   override fun onTagDiscovered(tag: Tag) {
-    this.isoDep = IsoDep.get(tag);
+    this.invalidateTag();
     try {
       this.isoDep = IsoDep.get(tag);
       this.isoDep?.connect();
-      this.isoDep?.setTimeout(120000);
+      // a half-coupled tag blocks transceive for the whole timeout
+      this.isoDep?.setTimeout(10000);
     } catch (e: IOException) {
       Log.e(TAG, "Error connecting to tag");
     } catch (e: SecurityException) {
