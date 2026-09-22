@@ -106,6 +106,7 @@ extension KeycardController: NFCTagReaderSessionDelegate {
     }
 
     public func tagReaderSession(_ session: NFCTagReaderSession, didDetect tags: [NFCTag]) {
+        os_log("[react-native-status-keycard] didDetect (%d tag(s))", tags.count)
         if tags.count > 1 {
             setAlert(alertMessages.moreThanOneTagFound)
             tagRemovalDetect(tags[0])

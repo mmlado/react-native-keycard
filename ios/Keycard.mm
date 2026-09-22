@@ -20,12 +20,15 @@
     resolve(@([keycard isNFCEnabled]));
 };
 - (void)startNFC:(NSString *)prompt resolve: (RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject {
+    __weak __typeof__(self) weakSelf = self;
     NSDictionary *result = [keycard startNFC:prompt onConnect: ^() {
-      [self emitOnKeycardConnected];
+      [weakSelf emitOnKeycardConnected];
     } onUserCancel: ^() {
-      [self emitOnNFCUserCancelled];
+      [weakSelf emitOnNFCUserCancelled];
     } onTimeout: ^() {
-      [self emitOnNFCTimeout];
+      [weakSelf emitOnNFCTimeout];
+    } onDisconnect: ^() {
+      [weakSelf emitOnKeycardDisconnected];
     }];
 
     if([[result objectForKey:@"nfcStarted"]  isEqual: @true] && [[result objectForKey:@"isSuccess"]  isEqual: @true]) {
@@ -61,11 +64,9 @@
   if([[result objectForKey:@"state"] isEqual: @"success"]) {
     resolve(result);
   } else {
-    reject(@"E_KEYCARD", @"Invalid APDUResponse", nil);
+    NSString *message = [result objectForKey:@"message"];
+    reject(@"E_KEYCARD", message != nil ? message : @"Invalid APDUResponse", nil);
   }
-
-
-
 };
 - (NSNumber *)isKeycardConnected {
     return [keycard isKeycardConnected];

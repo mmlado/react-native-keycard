@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.nfc.NfcAdapter
+import android.nfc.TagLostException
 import android.nfc.tech.IsoDep
 import android.util.Log
 import android.app.Activity
@@ -22,6 +23,7 @@ import com.keycard.NFCCardManager
 
 class NFCCardChannel(keycardEvents: Map<String, KFunction0<Unit>>): BroadcastReceiver() {
     private var nfcAdapter: NfcAdapter? = null
+    private var activity: Activity? = null
     private var isoDep: IsoDep? = null;
     val TAG: String = "SmartCard";
     private var started: Boolean = false;
@@ -68,9 +70,10 @@ class NFCCardChannel(keycardEvents: Map<String, KFunction0<Unit>>): BroadcastRec
       }
 
       if (this.nfcAdapter != null) {
+        this.activity = activity;
         val filter: IntentFilter = IntentFilter(NfcAdapter.ACTION_ADAPTER_STATE_CHANGED);
         activity.registerReceiver(this, filter);
-        this.nfcAdapter?.enableReaderMode(activity, this.cardManager, NfcAdapter.FLAG_READER_NFC_A or NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK, null);
+        this.nfcAdapter?.enableReaderMode(activity, this.cardManager, READER_FLAGS, null);
         return true;
       } else {
         log("Not supported in this device");
@@ -84,13 +87,36 @@ class NFCCardChannel(keycardEvents: Map<String, KFunction0<Unit>>): BroadcastRec
       }
     }
 
+    // onTagDiscovered fires only on field entry, so a card that stayed in the field needs a new polling round
+    public fun restartPolling(): Unit {
+      val act: Activity = this.activity ?: return;
+      val adapter: NfcAdapter = this.nfcAdapter ?: return;
+
+      act.runOnUiThread {
+        try {
+          adapter.disableReaderMode(act);
+          adapter.enableReaderMode(act, this.cardManager, READER_FLAGS, null);
+          log("reader mode restarted");
+        } catch (e: IllegalStateException) {
+          log("could not restart reader mode: " + e.message);
+        }
+      }
+    }
+
     public fun startNFC(): Unit {
-      synchronized(this.lock) {
+      val haveTag: Boolean = synchronized(this.lock) {
         this.listening = true;
 
         if (this.isoDep != null) {
           this.cardEvents["onKeycardConnected"]?.invoke();
+          true
+        } else {
+          false
         }
+      }
+
+      if (!haveTag) {
+        this.restartPolling();
       }
     }
 
@@ -134,13 +160,24 @@ class NFCCardChannel(keycardEvents: Map<String, KFunction0<Unit>>): BroadcastRec
 
     public fun send(cmd: String): ByteArray {
       val apdu: ByteArray = @OptIn(kotlin.ExperimentalStdlibApi::class) cmd.hexToByteArray();
+      val dep: IsoDep? = synchronized(this.lock) { this.isoDep };
 
       try {
-        return this.isoDep!!.transceive(apdu);
-      } catch(e: SecurityException) {
-        throw IOException("Tag disconnected", e);
-      } catch(e: IllegalArgumentException) {
-        throw IOException("Malformed card response", e);
+        if (dep == null) {
+          throw TagLostException(TAG_LOST);
+        }
+        return dep.transceive(apdu);
+      } catch(e: Exception) {
+        when (e) {
+          is TagLostException, is SecurityException, is IllegalStateException -> {
+            // isConnected() stays true for a lost tag until it is closed
+            this.cardManager.invalidateTag();
+            this.restartPolling();
+            throw if (e is TagLostException) e else IOException("Tag disconnected", e);
+          }
+          is IllegalArgumentException -> throw IOException("Malformed card response", e);
+          else -> throw e;
+        }
       }
     }
 
@@ -160,5 +197,7 @@ class NFCCardChannel(keycardEvents: Map<String, KFunction0<Unit>>): BroadcastRec
       const val ENCRYPTION_PATH: String = "m/43'/60'/1581'/1'/0"
       const val TAG_LOST: String = "Tag was lost."
       const val WORDS_LIST_SIZE: Int = 2048
+      const val READER_FLAGS: Int =
+        NfcAdapter.FLAG_READER_NFC_A or NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK
     }
 }
